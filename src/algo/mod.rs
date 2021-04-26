@@ -246,7 +246,8 @@ where
     f(dfs)
 }
 
-/// \[Generic\] Check if there exists a path starting at `from` and reaching `to`.
+/// \[Generic\] Check if there exists a path starting at `from` and reaching
+/// `to`.
 ///
 /// If `from` and `to` are equal, this function returns true.
 ///
@@ -277,7 +278,8 @@ where
     kosaraju_scc(g)
 }
 
-/// \[Generic\] Compute the *strongly connected components* using [Kosaraju's algorithm][1].
+/// \[Generic\] Compute the *strongly connected components* using [Kosaraju's
+/// algorithm][1].
 ///
 /// [1]: https://en.wikipedia.org/wiki/Kosaraju%27s_algorithm
 ///
@@ -336,7 +338,8 @@ struct NodeData {
     on_stack: bool,
 }
 
-/// A reusable state for computing the *strongly connected components* using [Tarjan's algorithm][1].
+/// A reusable state for computing the *strongly connected components* using
+/// [Tarjan's algorithm][1].
 ///
 /// [1]: https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
 #[derive(Debug)]
@@ -347,9 +350,7 @@ pub struct TarjanScc<N> {
 }
 
 impl<N> Default for TarjanScc<N> {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
 
 impl<N> TarjanScc<N> {
@@ -362,7 +363,8 @@ impl<N> TarjanScc<N> {
         }
     }
 
-    /// \[Generic\] Compute the *strongly connected components* using [Tarjan's algorithm][1].
+    /// \[Generic\] Compute the *strongly connected components* using [Tarjan's
+    /// algorithm][1].
     ///
     /// [1]: https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
     ///
@@ -458,7 +460,8 @@ impl<N> TarjanScc<N> {
     }
 }
 
-/// \[Generic\] Compute the *strongly connected components* using [Tarjan's algorithm][1].
+/// \[Generic\] Compute the *strongly connected components* using [Tarjan's
+/// algorithm][1].
 ///
 /// [1]: https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
 ///
@@ -481,10 +484,11 @@ where
     sccs
 }
 
-/// [Graph] Condense every strongly connected component into a single node and return the result.
+/// [Graph] Condense every strongly connected component into a single node and
+/// return the result.
 ///
-/// If `make_acyclic` is true, self-loops and multi edges are ignored, guaranteeing that
-/// the output is acyclic.
+/// If `make_acyclic` is true, self-loops and multi edges are ignored,
+/// guaranteeing that the output is acyclic.
 /// # Example
 /// ```rust
 /// use petgraph::Graph;
@@ -605,11 +609,12 @@ where
 /// The input graph is treated as if undirected.
 ///
 /// Using Kruskal's algorithm with runtime **O(|E| log |E|)**. We actually
-/// return a minimum spanning forest, i.e. a minimum spanning tree for each connected
-/// component of the graph.
+/// return a minimum spanning forest, i.e. a minimum spanning tree for each
+/// connected component of the graph.
 ///
-/// The resulting graph has all the vertices of the input graph (with identical node indices),
-/// and **|V| - c** edges, where **c** is the number of connected components in `g`.
+/// The resulting graph has all the vertices of the input graph (with identical
+/// node indices), and **|V| - c** edges, where **c** is the number of connected
+/// components in `g`.
 ///
 /// Use `from_elements` to create a graph from the resulting iterator.
 pub fn min_spanning_tree<G>(g: G) -> MinSpanningTree<G>
@@ -808,7 +813,7 @@ where
                 let i = edge.source();
                 let j = edge.target();
                 let w = *edge.weight();
-                if distance[ix(i)] + w < distance[ix(j)] {
+                if distance[ix(i)] != <_>::infinite() && distance[ix(i)] + w < distance[ix(j)] {
                     distance[ix(j)] = distance[ix(i)] + w;
                     predecessor[ix(j)] = Some(i);
                     did_update = true;
@@ -835,9 +840,10 @@ where
     Ok((distance, predecessor))
 }
 
-/// Return `true` if the graph is bipartite. A graph is bipartite if it's nodes can be divided into
-/// two disjoint and indepedent sets U and V such that every edge connects U to one in V. This
-/// algorithm implements 2-coloring algorithm based on the BFS algorithm.
+/// Return `true` if the graph is bipartite. A graph is bipartite if it's nodes
+/// can be divided into two disjoint and indepedent sets U and V such that every
+/// edge connects U to one in V. This algorithm implements 2-coloring algorithm
+/// based on the BFS algorithm.
 ///
 /// Always treats the input graph as if undirected.
 pub fn is_bipartite_undirected<G, N, VM>(g: G, start: N) -> bool
@@ -912,17 +918,13 @@ pub trait BoundedMeasure: FloatMeasure {}
 
 impl<T: FloatMeasure> BoundedMeasure for T {}
 
-/// Implements `BoundMeasure(FloatMeasure)` for `$type` using the builtin `MIN` and `MAX`
-/// associated values.
+/// Implements `BoundMeasure(FloatMeasure)` for `$type` using the builtin `MIN`
+/// and `MAX` associated values.
 macro_rules! impl_bounded_measure {
     ($type:ident) => {
         impl FloatMeasure for $type {
-            fn zero() -> $type {
-                0
-            }
-            fn infinite() -> $type {
-                std::$type::MAX
-            }
+            fn zero() -> $type { 0 }
+            fn infinite() -> $type { std::$type::MAX }
         }
     };
 }
@@ -931,12 +933,8 @@ macro_rules! impl_bounded_measure {
 macro_rules! impl_float_measure {
     ($type:ident) => {
         impl FloatMeasure for $type {
-            fn zero() -> $type {
-                0.
-            }
-            fn infinite() -> $type {
-                1. / 0.
-            }
+            fn zero() -> $type { 0. }
+            fn infinite() -> $type { 1. / 0. }
         }
     };
 }

@@ -59,25 +59,27 @@ use std::hash::Hash;
 pub fn floyd_warshall<G>(graph: G) -> Result<PathCostMatrix<G>, NegativeCycle>
 where
     G: NodeCount + IntoNodeIdentifiers + IntoEdges + NodeIndexable,
-    G::EdgeWeight: BoundedMeasure + std::fmt::Debug,
+    G::EdgeWeight: BoundedMeasure,
 {
     let mut dist: PathCostMatrix<G> = PathCostMatrix::new(graph);
-    for edge in graph.node_identifiers().flat_map(|i| graph.edges(i)) {
-        dist[(edge.source(), edge.target())] = *edge.weight();
-    }
-    for vertex in graph.node_identifiers() {
+    graph
+        .node_identifiers()
+        .flat_map(|i| graph.edges(i))
+        .for_each(|edge| {
+            dist[(edge.source(), edge.target())] = *edge.weight();
+        });
+    graph.node_identifiers().for_each(|vertex| {
         dist[(vertex, vertex)] = G::EdgeWeight::zero();
-    }
+    });
     for k in graph.node_identifiers() {
         for i in graph.node_identifiers() {
             for j in graph.node_identifiers() {
                 // Overflow guard.
                 if dist[(i, k)] != G::EdgeWeight::infinite()
                     && dist[(k, j)] != G::EdgeWeight::infinite()
+                    && dist[(i, j)] > dist[(i, k)] + dist[(k, j)]
                 {
-                    if dist[(i, j)] > dist[(i, k)] + dist[(k, j)] {
-                        dist[(i, j)] = dist[(i, k)] + dist[(k, j)]
-                    }
+                    dist[(i, j)] = dist[(i, k)] + dist[(k, j)]
                 }
             }
         }
@@ -118,7 +120,8 @@ where
     G::EdgeWeight: Clone,
 {
     graph: G,
-    weights: Vec<G::EdgeWeight>, // Single vector improves cache locality and prevents unnecessary allocations.
+    weights: Vec<G::EdgeWeight>, /* Single vector improves cache locality and prevents
+                                  * unnecessary allocations. */
 }
 
 impl<G> PathCostMatrix<G>
@@ -184,7 +187,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            graph: self.graph.clone(),
+            graph: self.graph,
             weights: self.weights.clone(),
         }
     }
