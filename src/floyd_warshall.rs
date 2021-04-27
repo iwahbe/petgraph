@@ -1,6 +1,7 @@
 use super::algo::{BoundedMeasure, FloatMeasure};
 use super::visit::{EdgeRef, IntoEdges, IntoNodeIdentifiers, NodeCount, NodeIndexable};
-use crate::algo::NegativeCycle;
+use crate::graph::NodeIndex;
+use crate::{algo::NegativeCycle, graph::node_index};
 use std::collections::HashMap;
 use std::hash::Hash;
 
@@ -52,6 +53,12 @@ use std::hash::Hash;
 /// assert_eq!(costs[(b,b)], 0);
 /// assert_eq!(costs[(e,h)], 8);
 ///
+/// let b_b_path: Vec<_> = costs.path(b, b).unwrap().into_iter().collect();
+/// assert_eq!(b_b_path, vec![b]);
+///
+/// let b_a_path: Vec<_> = costs.path(b, a).unwrap().into_iter().collect();
+/// assert_eq!(b_a_path, vec![b, c, d, a]);
+///
 /// // There is no valid path from e to b.
 /// assert_eq!(costs[(e,b)], i32::MAX);
 /// ```
@@ -66,7 +73,9 @@ where
         .node_identifiers()
         .flat_map(|i| graph.edges(i))
         .for_each(|edge| {
-            dist[(edge.source(), edge.target())] = *edge.weight();
+            let (w, k) = dist.access_mut(edge.source(), edge.target());
+            *w = *edge.weight();
+            *k = Intermediary::Direct;
         });
     graph.node_identifiers().for_each(|vertex| {
         dist[(vertex, vertex)] = G::EdgeWeight::zero();
@@ -79,7 +88,11 @@ where
                     && dist[(k, j)] != G::EdgeWeight::infinite()
                     && dist[(i, j)] > dist[(i, k)] + dist[(k, j)]
                 {
-                    dist[(i, j)] = dist[(i, k)] + dist[(k, j)]
+                    let ik = dist[(i, k)];
+                    let kj = dist[(k, j)];
+                    let (w, intermediary) = dist.access_mut(i, j);
+                    *w = ik + kj;
+                    *intermediary = Intermediary::Through(node_index(graph.to_index(k)));
                 }
             }
         }
@@ -120,8 +133,20 @@ where
     G::EdgeWeight: Clone,
 {
     graph: G,
-    weights: Vec<G::EdgeWeight>, /* Single vector improves cache locality and prevents
-                                  * unnecessary allocations. */
+    weights: Vec<(G::EdgeWeight, Intermediary)>, /* Single vector improves cache
+                                                  * locality and prevents
+                                                  * unnecessary allocations. */
+}
+
+/// How two nodes form a path. Meant to annotate some edge (s,t).
+#[derive(Clone, Copy)]
+enum Intermediary {
+    /// (s,t) form a path via some intermediary node index.
+    Through(NodeIndex),
+    /// (s,t) are directly connected
+    Direct,
+    /// There does not exist a path between (s,t)
+    None,
 }
 
 impl<G> PathCostMatrix<G>
@@ -132,10 +157,47 @@ where
     /// Generates `PathWeightMatrix` from a graph. The matrix is initialized,
     /// setting all weights to infinity.
     pub(crate) fn new(graph: G) -> Self {
-        let weights = vec![G::EdgeWeight::infinite(); graph.node_bound().pow(2)];
+        let weights =
+            vec![(G::EdgeWeight::infinite(), Intermediary::None); graph.node_bound().pow(2)];
         PathCostMatrix { graph, weights }
     }
+
+    /// Returns the path with lowest cost between `s` and `t` if it exists.
+    pub fn path(&self, s: G::NodeId, t: G::NodeId) -> Option<impl IntoIterator<Item = G::NodeId>> {
+        if s == t {
+            Some(vec![s].into_iter())
+        } else {
+            let (_, k) = self.access(s, t);
+            match k {
+                Intermediary::Direct => Some(vec![s, t].into_iter()),
+                Intermediary::Through(k) => {
+                    let k = self.graph.from_index(k.index());
+                    Some(
+                        self.path(s, k)?
+                            .into_iter()
+                            .chain(self.path(k, t)?.into_iter().skip(1))
+                            .collect::<Vec<_>>()
+                            .into_iter(),
+                    )
+                }
+                Intermediary::None => None,
+            }
+        }
+    }
+
+    fn access_mut(&mut self, s: G::NodeId, t: G::NodeId) -> &mut (G::EdgeWeight, Intermediary) {
+        let index_0 = self.graph.to_index(s);
+        let index_1 = self.graph.to_index(t);
+        &mut self.weights[index_0 * self.graph.node_bound() + index_1]
+    }
+
+    fn access(&self, s: G::NodeId, t: G::NodeId) -> &(G::EdgeWeight, Intermediary) {
+        let index_0 = self.graph.to_index(s);
+        let index_1 = self.graph.to_index(t);
+        &self.weights[index_0 * self.graph.node_bound() + index_1]
+    }
 }
+
 impl<G> PathCostMatrix<G>
 where
     G: NodeIndexable + NodeCount + IntoNodeIdentifiers + IntoEdges,
@@ -143,7 +205,7 @@ where
     G::NodeId: Eq + Hash,
 {
     /// Converts a `PathWeightMatrix` into a hashmap where the keys are index
-    /// pairs and values are thier associated trevel costs.
+    /// pairs and values are thier associated travel costs.
     pub fn into_hashmap(self) -> HashMap<(G::NodeId, G::NodeId), G::EdgeWeight> {
         self.graph
             .node_identifiers()
@@ -156,34 +218,30 @@ where
 impl<G> std::ops::Index<(G::NodeId, G::NodeId)> for PathCostMatrix<G>
 where
     G: NodeIndexable + NodeCount + IntoNodeIdentifiers + IntoEdges,
-    G::EdgeWeight: Clone,
+    G::EdgeWeight: Clone + BoundedMeasure,
 {
     type Output = G::EdgeWeight;
     fn index(&self, index: (G::NodeId, G::NodeId)) -> &Self::Output {
-        let index_0 = self.graph.to_index(index.0);
-        let index_1 = self.graph.to_index(index.1);
-        self.weights
-            .index(index_0 * self.graph.node_bound() + index_1)
+        let (w, _) = self.access(index.0, index.1);
+        w
     }
 }
 
 impl<G> std::ops::IndexMut<(G::NodeId, G::NodeId)> for PathCostMatrix<G>
 where
     G: NodeIndexable + NodeCount + IntoNodeIdentifiers + IntoEdges,
-    G::EdgeWeight: Clone,
+    G::EdgeWeight: Clone + BoundedMeasure,
 {
     fn index_mut(&mut self, index: (G::NodeId, G::NodeId)) -> &mut Self::Output {
-        let index_0 = self.graph.to_index(index.0);
-        let index_1 = self.graph.to_index(index.1);
-        self.weights
-            .index_mut(index_0 * self.graph.node_bound() + index_1)
+        let (w, _) = self.access_mut(index.0, index.1);
+        w
     }
 }
 
 impl<G> Clone for PathCostMatrix<G>
 where
-    G::EdgeWeight: Clone,
     G: Clone + IntoNodeIdentifiers + NodeIndexable + NodeCount + IntoEdges,
+    G::EdgeWeight: Clone,
 {
     fn clone(&self) -> Self {
         Self {
