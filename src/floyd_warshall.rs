@@ -1,5 +1,5 @@
 use super::algo::{BoundedMeasure, FloatMeasure};
-use super::visit::{EdgeRef, IntoEdges, IntoNodeIdentifiers, NodeCount, NodeIndexable};
+use super::visit::{EdgeRef, GraphProp, IntoEdges, IntoNodeIdentifiers, NodeCount, NodeIndexable};
 use crate::graph::NodeIndex;
 use crate::{algo::NegativeCycle, graph::node_index};
 use std::collections::HashMap;
@@ -65,7 +65,7 @@ use std::hash::Hash;
 
 pub fn floyd_warshall<G>(graph: G) -> Result<PathCostMatrix<G>, NegativeCycle>
 where
-    G: NodeCount + IntoNodeIdentifiers + IntoEdges + NodeIndexable,
+    G: NodeCount + IntoNodeIdentifiers + IntoEdges + NodeIndexable + GraphProp,
     G::EdgeWeight: BoundedMeasure,
 {
     let mut dist: PathCostMatrix<G> = PathCostMatrix::new(graph);
@@ -76,6 +76,11 @@ where
             let (w, k) = dist.access_mut(edge.source(), edge.target());
             *w = *edge.weight();
             *k = Intermediary::Direct;
+            if !graph.is_directed() {
+                let (w, k) = dist.access_mut(edge.target(), edge.source());
+                *w = *edge.weight();
+                *k = Intermediary::Direct;
+            }
         });
     graph.node_identifiers().for_each(|vertex| {
         dist[(vertex, vertex)] = G::EdgeWeight::zero();
